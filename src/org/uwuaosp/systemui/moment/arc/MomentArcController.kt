@@ -63,6 +63,9 @@ class MomentArcController(
     )
 
     private var overlayView: MomentArcView? = null
+    // An interrupted gesture or missing dismissal broadcast must not leave
+    // a trusted full-screen panel indefinitely visible above apps.
+    private val overlayTimeout = Runnable { hide() }
     private var isGestureActive = false
     private var destroyed = false
     private var lastWindowManagerErrorLogTime = Long.MIN_VALUE
@@ -128,6 +131,8 @@ class MomentArcController(
         try {
             windowManager.addView(momentArcView, MomentArcView.createLayoutParams())
             overlayView = momentArcView
+            mainHandler.removeCallbacks(overlayTimeout)
+            mainHandler.postDelayed(overlayTimeout, MAX_OVERLAY_VISIBLE_MS)
             while (touchCoordinatesQueue.isNotEmpty()) {
                 touchCoordinatesQueue.poll()?.let { touch ->
                     momentArcView.dispatchTouchCoordinates(
@@ -180,6 +185,7 @@ class MomentArcController(
     }
 
     fun hide() {
+        mainHandler.removeCallbacks(overlayTimeout)
         overlayGeneration.incrementAndGet() // invalidate all pending icon results
         overlayView?.let { view ->
             try {
@@ -482,6 +488,9 @@ class MomentArcController(
     companion object {
         private const val TAG = "MomentArc"
         private const val WINDOW_MANAGER_ERROR_LOG_INTERVAL_MS = 30_000L
+        // Eight seconds is ample for a radial gesture, with no background
+        // wake-lock. Stale full-screen panels are always removed.
+        private const val MAX_OVERLAY_VISIBLE_MS = 8_000L
         private const val MAX_ICON_TASKS = 16
         private const val MAX_PENDING_TOUCHES = 32
         private const val INNER_MAX_ICONS = 6
