@@ -64,10 +64,12 @@ class MomentArcController(
 
     private var overlayView: MomentArcView? = null
     private var isGestureActive = false
+    private var destroyed = false
     private var lastWindowManagerErrorLogTime = Long.MIN_VALUE
     private var suppressedWindowManagerErrorCount = 0
 
     fun show(isLeft: Boolean, initialTouchX: Float = -1f, initialTouchY: Float = -1f) {
+        if (destroyed) return
         hide()
         if (!isMomentArcEnabled()) return
         val generation = overlayGeneration.get()
@@ -150,6 +152,7 @@ class MomentArcController(
         isUp: Boolean,
         isCancelled: Boolean = false,
     ) {
+        if (destroyed) return
         if (!isMomentArcEnabled()) {
             hide()
             return
@@ -191,6 +194,7 @@ class MomentArcController(
     }
 
     fun destroy() {
+        destroyed = true
         hide()
         iconExecutor.shutdownNow()
         mainHandler.removeCallbacksAndMessages(null)
