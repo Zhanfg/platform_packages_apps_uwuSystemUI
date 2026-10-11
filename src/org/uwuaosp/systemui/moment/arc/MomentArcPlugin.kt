@@ -116,7 +116,8 @@ class MomentArcPlugin : OverlayPlugin {
 
     override fun onDestroy() {
         if (::controller.isInitialized) {
-            controller.hide()
+            // Dismiss overlays and stop outstanding icon lookups when unloaded.
+            controller.destroy()
         }
         if (::sysuiContext.isInitialized && settingsObserverRegistered) {
             runCatching {
