@@ -6,12 +6,14 @@ on:
     paths:
       - "src/org/uwuaosp/systemui/moment/arc/MomentArcController.kt"
       - "src/org/uwuaosp/systemui/moment/arc/MomentArcPlugin.kt"
+      - "src/org/uwuaosp/systemui/moment/arc/MomentArcView.kt"
       - "tools/qa/test_moment_arc_latency.py"
       - ".github/workflows/moment-arc-latency-qa.yml"
   pull_request:
     paths:
       - "src/org/uwuaosp/systemui/moment/arc/MomentArcController.kt"
       - "src/org/uwuaosp/systemui/moment/arc/MomentArcPlugin.kt"
+      - "src/org/uwuaosp/systemui/moment/arc/MomentArcView.kt"
       - "tools/qa/test_moment_arc_latency.py"
       - ".github/workflows/moment-arc-latency-qa.yml"
 
@@ -29,6 +31,7 @@ jobs:
           sparse-checkout: |
             src/org/uwuaosp/systemui/moment/arc/MomentArcController.kt
             src/org/uwuaosp/systemui/moment/arc/MomentArcPlugin.kt
+            src/org/uwuaosp/systemui/moment/arc/MomentArcView.kt
             tools/qa/test_moment_arc_latency.py
           sparse-checkout-cone-mode: false
       - name: Check bounded IPC and view lifecycle
