@@ -364,7 +364,12 @@ class MomentArcView(
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    // The host gesture dispatcher already sends touch positions
+                    // through ACTION_UPDATE_MOMENT_ARC_TOUCH. A MATCH_PARENT
+                    // navigation-bar panel MUST NOT become a full-screen touch
+                    // target: it can starve back/home gestures if dismissal
+                    // fails or an event never arrives.
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                     WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS or
                     WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 PixelFormat.TRANSLUCENT,
