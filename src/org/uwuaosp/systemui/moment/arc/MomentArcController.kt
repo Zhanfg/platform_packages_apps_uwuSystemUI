@@ -200,6 +200,27 @@ class MomentArcController(
         mainHandler.removeCallbacksAndMessages(null)
     }
 
+    @Volatile
+    private var momentArcEnabled = false
+
+    // Called on the plugin's main handler at creation, settings changes and
+    // user switches. Do not read SettingsProvider on each touch coordinate.
+    fun refreshEnabledState() {
+        momentArcEnabled = try {
+            isMomentEnabled() &&
+                Settings.Secure.getIntForUser(
+                    sysuiContext.contentResolver,
+                    Settings.Secure.MOMENT_ARC_GESTURE_ENABLED,
+                    1,
+                    ActivityManager.getCurrentUser(),
+                ) != 0
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "MomentArc setting lookup failed", e)
+            false
+        }
+        if (!momentArcEnabled) hide()
+    }
+
     fun isMomentEnabled(): Boolean {
         return Settings.Secure.getIntForUser(
             sysuiContext.contentResolver,
@@ -209,17 +230,7 @@ class MomentArcController(
         ) != 0
     }
 
-    fun isMomentArcEnabled(): Boolean {
-        if (!isMomentEnabled()) {
-            return false
-        }
-        return Settings.Secure.getIntForUser(
-            sysuiContext.contentResolver,
-            Settings.Secure.MOMENT_ARC_GESTURE_ENABLED,
-            1,
-            ActivityManager.getCurrentUser(),
-        ) != 0
-    }
+    fun isMomentArcEnabled(): Boolean = momentArcEnabled
 
     private fun createIconView(target: MomentArcTarget, generation: Long): ImageView {
         val iconView = ImageView(sysuiContext).apply {
