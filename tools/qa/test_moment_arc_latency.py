@@ -20,7 +20,7 @@ class MomentArcAsyncQATests(unittest.TestCase):
         icon_fn = src.split("private fun createIconView(",1)[1].split("private fun loadIcon(",1)[0]
         self.assertIn("iconExecutor.execute {", icon_fn)
         self.assertIn("loadIcon(target)", icon_fn.split("iconExecutor.execute {",1)[1])
-        self.assertNotIn("val icon = runCatching { loadIcon(target) }\n", icon_fn)
+        self.assertNotIn("loadIcon(target)", icon_fn.split("iconExecutor.execute {",1)[0])
 
     def test_dismissed_overlay_cannot_receive_late_icon(self):
         src = self.src
@@ -36,6 +36,9 @@ class MomentArcAsyncQATests(unittest.TestCase):
         self.assertIn("fun destroy() {", self.src)
         self.assertIn("iconExecutor.shutdownNow()", self.src)
         self.assertIn("controller.destroy()", self.plugin)
+        self.assertIn("if (destroyed) return", self.src)
+        self.assertIn('Log.e(TAG, "MomentArc gesture command failed", e)', self.plugin)
+        self.assertIn('Log.e(TAG, "MomentArc registration failed", e)', self.plugin)
 
 if __name__ == "__main__":
     unittest.main()
