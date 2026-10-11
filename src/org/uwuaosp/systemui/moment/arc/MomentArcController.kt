@@ -26,6 +26,8 @@ import android.content.pm.ShortcutInfo
 import android.graphics.Outline
 import android.graphics.drawable.Drawable
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.os.UserHandle
 import android.provider.Settings
@@ -35,7 +37,11 @@ import android.view.ViewOutlineProvider
 import android.view.WindowManager
 import android.widget.ImageView
 import org.uwuaosp.systemui.moment.arc.R
+import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.min
 
 class MomentArcController(
@@ -45,6 +51,16 @@ class MomentArcController(
     private val launcherApps = sysuiContext.getSystemService(LauncherApps::class.java)
     private val windowManager = sysuiContext.getSystemService(WindowManager::class.java)
     private val touchCoordinatesQueue = ConcurrentLinkedQueue<TouchCoordinates>()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val overlayGeneration = AtomicLong(0L)
+    // PackageManager and LauncherApps binder lookups must not block SystemUI's main thread.
+    // Keep one worker, bound its queue, and let it exit after a short idle timeout.
+    private val iconExecutor = ThreadPoolExecutor(
+        0, 1, 15L, TimeUnit.SECONDS,
+        ArrayBlockingQueue<Runnable>(MAX_ICON_TASKS),
+        { task -> Thread(task, "MomentArc-icon-loader").apply { isDaemon = true } },
+        ThreadPoolExecutor.DiscardOldestPolicy(),
+    )
 
     private var overlayView: MomentArcView? = null
     private var isGestureActive = false
@@ -54,6 +70,7 @@ class MomentArcController(
     fun show(isLeft: Boolean, initialTouchX: Float = -1f, initialTouchY: Float = -1f) {
         hide()
         if (!isMomentArcEnabled()) return
+        val generation = overlayGeneration.get()
 
         val innerTargets = getInnerRingTargets()
         val outerTargets = getOuterRingTargets()
@@ -62,7 +79,7 @@ class MomentArcController(
         val displayedOuterTargets = ArrayList<MomentArcTarget>()
 
         innerTargets.take(INNER_MAX_ICONS - 1).forEach { target ->
-            createIconView(target)?.let { iconView ->
+            createIconView(target, generation).let { iconView ->
                 momentArcView.addView(iconView)
                 displayedInnerTargets.add(target)
             }
@@ -80,7 +97,7 @@ class MomentArcController(
         )
 
         outerTargets.take(OUTER_MAX_ICONS).forEach { target ->
-            createIconView(target)?.let { iconView ->
+            createIconView(target, generation).let { iconView ->
                 momentArcView.addView(iconView)
                 displayedOuterTargets.add(target)
             }
@@ -145,6 +162,11 @@ class MomentArcController(
             ?: if (isCancelled) {
                 hide()
             } else {
+                // A broken or slow window manager must not allow unlimited pending
+                // touch points to accumulate on the SystemUI process.
+                if (touchCoordinatesQueue.size >= MAX_PENDING_TOUCHES) {
+                    touchCoordinatesQueue.poll()
+                }
                 touchCoordinatesQueue.add(TouchCoordinates(x, y, isUp, false))
             }
 
@@ -155,6 +177,7 @@ class MomentArcController(
     }
 
     fun hide() {
+        overlayGeneration.incrementAndGet() // invalidate all pending icon results
         overlayView?.let { view ->
             try {
                 windowManager.removeView(view)
@@ -165,6 +188,12 @@ class MomentArcController(
         overlayView = null
         isGestureActive = false
         touchCoordinatesQueue.clear()
+    }
+
+    fun destroy() {
+        hide()
+        iconExecutor.shutdownNow()
+        mainHandler.removeCallbacksAndMessages(null)
     }
 
     fun isMomentEnabled(): Boolean {
@@ -188,15 +217,25 @@ class MomentArcController(
         ) != 0
     }
 
-    private fun createIconView(target: MomentArcTarget): ImageView? {
-        val icon = runCatching { loadIcon(target) }
-            .onFailure { Log.w(TAG, "Failed to load icon for $target", it) }
-            .getOrNull()
-            ?: return null
-        return ImageView(sysuiContext).apply {
-            setImageDrawable(icon)
+    private fun createIconView(target: MomentArcTarget, generation: Long): ImageView {
+        val iconView = ImageView(sysuiContext).apply {
+            setImageDrawable(sysuiContext.packageManager.defaultActivityIcon)
             iconToCircle()
         }
+        // Never block the broadcast/UI dispatcher on LauncherApps or package icon
+        // binder calls. Ignore late results after dismiss, user switch or destruction.
+        iconExecutor.execute {
+            if (overlayGeneration.get() != generation) return@execute
+            val icon = runCatching { loadIcon(target) }
+                .onFailure { Log.w(TAG, "Failed to load MomentArc icon", it) }
+                .getOrNull() ?: return@execute
+            mainHandler.post {
+                if (overlayGeneration.get() == generation && overlayView != null) {
+                    iconView.setImageDrawable(icon)
+                }
+            }
+        }
+        return iconView
     }
 
     private fun loadIcon(target: MomentArcTarget): Drawable {
@@ -428,6 +467,8 @@ class MomentArcController(
     companion object {
         private const val TAG = "MomentArc"
         private const val WINDOW_MANAGER_ERROR_LOG_INTERVAL_MS = 30_000L
+        private const val MAX_ICON_TASKS = 16
+        private const val MAX_PENDING_TOUCHES = 32
         private const val INNER_MAX_ICONS = 6
         private const val OUTER_MAX_ICONS = 7
         private const val ENTRY_SEPARATOR = "|"
