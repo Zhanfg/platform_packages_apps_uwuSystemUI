@@ -32,6 +32,17 @@ class MomentArcAsyncQATests(unittest.TestCase):
         self.assertIn("touchCoordinatesQueue.size >= MAX_PENDING_TOUCHES",self.src)
         self.assertIn("private const val MAX_PENDING_TOUCHES = 32",self.src)
 
+    def test_touch_events_use_cached_setting_without_binder_reads(self):
+        touch = self.src.split("fun onTouchCoordinates(", 1)[1].split(
+            "    fun hide()", 1
+        )[0]
+        self.assertIn("if (!isMomentArcEnabled())", touch)
+        self.assertNotIn("Settings.Secure.getIntForUser", touch)
+        self.assertIn("fun isMomentArcEnabled(): Boolean = momentArcEnabled", self.src)
+        self.assertIn("fun refreshEnabledState()", self.src)
+        self.assertIn("controller.refreshEnabledState()", self.plugin)
+        self.assertIn("Intent.ACTION_USER_SWITCHED -> {", self.plugin)
+
     def test_plugin_shutdown_releases_worker(self):
         self.assertIn("fun destroy() {", self.src)
         self.assertIn("iconExecutor.shutdownNow()", self.src)
