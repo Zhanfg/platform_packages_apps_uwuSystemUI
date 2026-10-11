@@ -1,0 +1,35 @@
+name: uwuSystemUI Moment Arc Responsiveness QA
+
+on:
+  push:
+    branches: ["fix/**"]
+    paths:
+      - "src/org/uwuaosp/systemui/moment/arc/MomentArcController.kt"
+      - "src/org/uwuaosp/systemui/moment/arc/MomentArcPlugin.kt"
+      - "tools/qa/test_moment_arc_latency.py"
+      - ".github/workflows/moment-arc-latency-qa.yml"
+  pull_request:
+    paths:
+      - "src/org/uwuaosp/systemui/moment/arc/MomentArcController.kt"
+      - "src/org/uwuaosp/systemui/moment/arc/MomentArcPlugin.kt"
+      - "tools/qa/test_moment_arc_latency.py"
+      - ".github/workflows/moment-arc-latency-qa.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  source-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            src/org/uwuaosp/systemui/moment/arc/MomentArcController.kt
+            src/org/uwuaosp/systemui/moment/arc/MomentArcPlugin.kt
+            tools/qa/test_moment_arc_latency.py
+          sparse-checkout-cone-mode: false
+      - name: Check bounded IPC and view lifecycle
+        run: python3 -m unittest discover -s tools/qa -p test_moment_arc_latency.py -v
