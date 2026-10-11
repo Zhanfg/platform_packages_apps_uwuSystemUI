@@ -43,9 +43,7 @@ class MomentArcPlugin : OverlayPlugin {
         object : ContentObserver(mainHandler) {
             override fun onChange(selfChange: Boolean) {
                 try {
-                    if (!controller.isMomentArcEnabled()) {
-                        controller.hide()
-                    }
+                    controller.refreshEnabledState()
                 } catch (e: RuntimeException) {
                     Log.w(TAG, "MomentArc preference observer failed", e)
                     controller.hide()
@@ -74,8 +72,11 @@ class MomentArcPlugin : OverlayPlugin {
                         )
                     }
                     ACTION_DISMISS_MOMENT_ARC -> controller.hide()
-                    Intent.ACTION_SCREEN_OFF,
-                    Intent.ACTION_USER_SWITCHED -> controller.hide()
+                    Intent.ACTION_SCREEN_OFF -> controller.hide()
+                    Intent.ACTION_USER_SWITCHED -> {
+                        controller.hide()
+                        controller.refreshEnabledState()
+                    }
                     }
                 } catch (e: RuntimeException) {
                     // Bad vendor Binder state or stale app/shortcut data must not
@@ -90,6 +91,7 @@ class MomentArcPlugin : OverlayPlugin {
         this.sysuiContext = sysuiContext
         this.pluginContext = pluginContext
         controller = MomentArcController(sysuiContext, pluginContext)
+        controller.refreshEnabledState()
 
         val filter =
             IntentFilter().apply {
