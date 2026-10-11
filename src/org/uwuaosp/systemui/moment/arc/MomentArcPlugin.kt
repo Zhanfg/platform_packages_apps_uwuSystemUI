@@ -24,6 +24,7 @@ import android.database.ContentObserver
 import android.os.Handler
 import android.os.Looper
 import android.os.UserHandle
+import android.util.Log
 import android.view.View
 import com.android.systemui.plugins.OverlayPlugin
 import com.android.systemui.plugins.annotations.Requires
@@ -41,7 +42,12 @@ class MomentArcPlugin : OverlayPlugin {
     private val settingsObserver =
         object : ContentObserver(mainHandler) {
             override fun onChange(selfChange: Boolean) {
-                if (!controller.isMomentArcEnabled()) {
+                try {
+                    if (!controller.isMomentArcEnabled()) {
+                        controller.hide()
+                    }
+                } catch (e: RuntimeException) {
+                    Log.w(TAG, "MomentArc preference observer failed", e)
                     controller.hide()
                 }
             }
@@ -50,7 +56,8 @@ class MomentArcPlugin : OverlayPlugin {
     private val receiver =
         object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
-                when (intent?.action) {
+                try {
+                    when (intent?.action) {
                     ACTION_SHOW_MOMENT_ARC -> {
                         controller.show(
                             isLeft = intent.getBooleanExtra(EXTRA_IS_LEFT, true),
@@ -69,6 +76,12 @@ class MomentArcPlugin : OverlayPlugin {
                     ACTION_DISMISS_MOMENT_ARC -> controller.hide()
                     Intent.ACTION_SCREEN_OFF,
                     Intent.ACTION_USER_SWITCHED -> controller.hide()
+                    }
+                } catch (e: RuntimeException) {
+                    // Bad vendor Binder state or stale app/shortcut data must not
+                    // escape the main-thread BroadcastReceiver into SystemUI.
+                    Log.e(TAG, "MomentArc gesture command failed", e)
+                    controller.hide()
                 }
             }
         }
@@ -86,32 +99,39 @@ class MomentArcPlugin : OverlayPlugin {
                 addAction(Intent.ACTION_SCREEN_OFF)
                 addAction(Intent.ACTION_USER_SWITCHED)
             }
-        sysuiContext.registerReceiverAsUser(
-            receiver,
-            UserHandle.ALL,
-            filter,
-            STATUS_BAR_PERMISSION,
-            mainHandler,
-            Context.RECEIVER_EXPORTED,
-        )
-        receiverRegistered = true
-        sysuiContext.contentResolver.registerContentObserver(
-            android.provider.Settings.Secure.getUriFor(
-                android.provider.Settings.Secure.MOMENT_ENABLED,
-            ),
-            false,
-            settingsObserver,
-            UserHandle.USER_ALL,
-        )
-        settingsObserverRegistered = true
-        sysuiContext.contentResolver.registerContentObserver(
-            android.provider.Settings.Secure.getUriFor(
-                android.provider.Settings.Secure.MOMENT_ARC_GESTURE_ENABLED,
-            ),
-            false,
-            settingsObserver,
-            UserHandle.USER_ALL,
-        )
+        try {
+            sysuiContext.registerReceiverAsUser(
+                receiver,
+                UserHandle.ALL,
+                filter,
+                STATUS_BAR_PERMISSION,
+                mainHandler,
+                Context.RECEIVER_EXPORTED,
+            )
+            receiverRegistered = true
+            sysuiContext.contentResolver.registerContentObserver(
+                android.provider.Settings.Secure.getUriFor(
+                    android.provider.Settings.Secure.MOMENT_ENABLED,
+                ),
+                false,
+                settingsObserver,
+                UserHandle.USER_ALL,
+            )
+            settingsObserverRegistered = true
+            sysuiContext.contentResolver.registerContentObserver(
+                android.provider.Settings.Secure.getUriFor(
+                    android.provider.Settings.Secure.MOMENT_ARC_GESTURE_ENABLED,
+                ),
+                false,
+                settingsObserver,
+                UserHandle.USER_ALL,
+            )
+        } catch (e: RuntimeException) {
+            // Fail this optional plugin closed instead of bringing down the
+            // hosting status bar process if a permission or service is absent.
+            Log.e(TAG, "MomentArc registration failed", e)
+            onDestroy()
+        }
     }
 
     override fun onDestroy() {
@@ -139,6 +159,7 @@ class MomentArcPlugin : OverlayPlugin {
     }
 
     companion object {
+        private const val TAG = "MomentArcPlugin"
         const val ACTION_SHOW_MOMENT_ARC = "com.android.systemui.action.SHOW_MOMENT_ARC"
         const val ACTION_UPDATE_MOMENT_ARC_TOUCH =
             "com.android.systemui.action.UPDATE_MOMENT_ARC_TOUCH"
