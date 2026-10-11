@@ -5,12 +5,14 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 CONTROLLER = ROOT / "src/org/uwuaosp/systemui/moment/arc/MomentArcController.kt"
 PLUGIN = ROOT / "src/org/uwuaosp/systemui/moment/arc/MomentArcPlugin.kt"
+VIEW = ROOT / "src/org/uwuaosp/systemui/moment/arc/MomentArcView.kt"
 
 class MomentArcAsyncQATests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.src = CONTROLLER.read_text(encoding="utf-8")
         cls.plugin = PLUGIN.read_text(encoding="utf-8")
+        cls.view = VIEW.read_text(encoding="utf-8")
 
     def test_icon_service_binder_calls_are_in_bounded_executor(self):
         src = self.src
@@ -31,6 +33,23 @@ class MomentArcAsyncQATests(unittest.TestCase):
     def test_pending_touch_queue_is_bounded(self):
         self.assertIn("touchCoordinatesQueue.size >= MAX_PENDING_TOUCHES",self.src)
         self.assertIn("private const val MAX_PENDING_TOUCHES = 32",self.src)
+
+    def test_fullscreen_overlay_passes_all_system_touches_through(self):
+        layout = self.view.split("fun createLayoutParams()", 1)[1]
+        self.assertIn("WindowManager.LayoutParams.MATCH_PARENT", layout)
+        self.assertIn("WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE", layout)
+        self.assertNotIn("WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL", layout)
+        # Selection is still driven by the existing framework gesture
+        # broadcasts, never by intercepting the back/home motion stream.
+        self.assertIn("fun dispatchTouchCoordinates(", self.view)
+        self.assertIn("ACTION_UPDATE_MOMENT_ARC_TOUCH", self.plugin)
+
+    def test_overlay_cannot_outlive_8s_missing_gesture_end(self):
+        self.assertIn("private val overlayTimeout = Runnable { hide() }", self.src)
+        self.assertIn("mainHandler.postDelayed(overlayTimeout, MAX_OVERLAY_VISIBLE_MS)", self.src)
+        self.assertIn("mainHandler.removeCallbacks(overlayTimeout)", self.src)
+        self.assertIn("MAX_OVERLAY_VISIBLE_MS = 8_000L", self.src)
+        self.assertIn("Intent.ACTION_SCREEN_OFF -> controller.hide()", self.plugin)
 
     def test_touch_events_use_cached_setting_without_binder_reads(self):
         touch = self.src.split("fun onTouchCoordinates(", 1)[1].split(
